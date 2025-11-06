@@ -1,0 +1,102 @@
+(kicad_sch
+	(version 20250114)
+	(generator "eeschema")
+	(generator_version "9.0")
+	(uuid "3aca064a-36ee-49a5-a0ad-80d6f07aae81")
+	(paper "A4")
+	(title_block
+		(title "8_bay_smart")
+		(date "2025-10-14")
+	)
+	(lib_symbols)
+	(sheet
+		(at 40.64 38.1)
+		(size 53.34 29.21)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "6837060b-7387-4fb3-b21a-6f9731e035d3")
+		(property "Sheetname" "Power (12 V → 5 V  3.3 V)"
+			(at 40.64 37.3884 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "untitled.kicad_sch"
+			(at 40.64 67.8946 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "6_bay_charg"
+				(path "/3aca064a-36ee-49a5-a0ad-80d6f07aae81"
+					(page "2")
+				)
+			)
+		)
+	)
+	(sheet
+		(at 40.64 78.74)
+		(size 52.07 25.4)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "e0c0699f-3c1f-4e8b-8314-d0e4dacb25f8")
+		(property "Sheetname" "MCU"
+			(at 40.64 78.0284 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "MCU_sch.kicad_sch"
+			(at 40.64 104.7246 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "6_bay_charg"
+				(path "/3aca064a-36ee-49a5-a0ad-80d6f07aae81"
+					(page "3")
+				)
+			)
+		)
+	)
+	(sheet_instances
+		(path "/"
+			(page "1")
+		)
+	)
+	(embedded_fonts no)
+)
