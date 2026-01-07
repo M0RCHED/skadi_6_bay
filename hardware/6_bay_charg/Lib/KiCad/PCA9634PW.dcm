@@ -1,0 +1,9 @@
+EESchema-DOCLIB  Version 2.0
+#
+$CMP PCA9634PW
+D LED Lighting Drivers 8BIT I2C FM+ TP LED CON RST OE plastic thin shrink small outline package; 20 leads; body width 4.4 mm SOT360-1
+K
+F https://www.nxp.com/docs/en/data-sheet/PCA9634.pdf
+$ENDCMP
+#
+#End Doc Library
