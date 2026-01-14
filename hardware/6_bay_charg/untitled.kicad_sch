@@ -5,7 +5,7 @@
 	(uuid "3964022f-75ff-4f68-b911-a0dcf783dbc7")
 	(paper "A4")
 	(title_block
-		(title "Power (12 V → 5 V / 3.3 V)")
+		(title "Power prot + Fan")
 		(rev "Rev A")
 		(company "EOS Positioning Systems")
 		(comment 1 "Skadi 6-Bay Smart Charger")
@@ -1772,6 +1772,28 @@
 			)
 			(embedded_fonts no)
 		)
+	)
+	(text "power input 12V + Fan"
+		(exclude_from_sim no)
+		(at 153.67 152.908 0)
+		(effects
+			(font
+				(size 3.27 3.27)
+				(thickness 0.4088)
+			)
+		)
+		(uuid "a3e9d2eb-6b93-4817-8939-f117e4d5f925")
+	)
+	(text "input power : 12V, 12A "
+		(exclude_from_sim no)
+		(at 45.212 77.724 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.4088)
+			)
+		)
+		(uuid "fe75cf2a-4eea-456f-9ca2-dade2149ab82")
 	)
 	(junction
 		(at 176.53 120.65)

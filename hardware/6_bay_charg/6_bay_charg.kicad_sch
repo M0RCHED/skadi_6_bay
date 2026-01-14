@@ -448,7 +448,7 @@
 			(color 0 0 0 0.0000)
 		)
 		(uuid "6837060b-7387-4fb3-b21a-6f9731e035d3")
-		(property "Sheetname" "Power (12 V → 5 V  3.3 V)"
+		(property "Sheetname" "Power (12 V ) + PROT +  FAN (page 2)"
 			(at 39.37 37.3884 0)
 			(effects
 				(font
