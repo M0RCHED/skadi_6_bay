@@ -1,0 +1,2 @@
+../Core/Src/services/services_cmd.c:8:13:apply_line	24	static
+../Core/Src/services/services_cmd.c:20:6:Cmd_Ingest	32	static

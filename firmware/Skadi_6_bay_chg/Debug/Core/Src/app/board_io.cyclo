@@ -1,0 +1,6 @@
+../Core/Src/app/board_io.c:10:13:bay_gpio	13
+../Core/Src/app/board_io.c:41:6:Board_BayCmd	3
+../Core/Src/app/board_io.c:55:12:Board_ReadMode	1
+../Core/Src/app/board_io.c:60:9:Board_BayPresent	4
+../Core/Src/app/board_io.c:77:7:Board_ReadVin12	2
+../Core/Src/app/board_io.c:92:9:USB_CDC_Tx	1

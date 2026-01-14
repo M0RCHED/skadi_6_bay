@@ -1,435 +1,717 @@
 # ⚡ Skadi 6-Bay Smart Charger — v1.0 
 
-> Version conceptuelle matérielle + logicielle décrivant l’architecture cible, la logique firmware et les contraintes de conception.
-> Ce projet open hardware vise à fournir une plateforme de gestion intelligente pour 6 packs Li-ion 2S (Excel 2EXL1505 / Skadi).
-> 🔗 **Documentation complète :** [hardware/](./hardware) • [firmware/](./firmware) • [docs/](./docs)
+> Plateforme de gestion intelligente pour 6 packs Li-ion 2S (Excel 2EXL1505 / Skadi).
+> Système open hardware permettant la charge et décharge automatique pour atteindre ~30% SoC (conformité IATA/UN 3480).
 
 ![EOS Logo](./Docs/eos_logo.png)
 
 ---
 
-## 🧭 1 — Présentation du projet
+## 📋 Vue d'ensemble
 
-Les transporteurs internationaux (UPS, FedEx, DHL, etc.) n’acceptent pas l’expédition de batteries Li-ion **> 30 % SoC** en raison des risques thermiques.  
-Le **Skadi 6-Bay Smart Charger** vise à développer un **système à 6 baies** capable de **ramener automatiquement chaque batterie au seuil de ~30 % SoC**, qu’elle soit initialement trop basse (charge) ou trop haute (**décharge via ELOAD**).
+Les transporteurs internationaux (UPS, FedEx, DHL, etc.) n'acceptent pas l'expédition de batteries Li-ion **> 30 % SoC** en raison des risques thermiques.
 
-Chaque **batterie Skadi** est **assemblée avec sa propre carte électronique**, intégrant :
-- un **chargeur BQ24610** (régulation CC/CV, gestion thermique NTC) ;
-- un **fuel gauge MAX17263** (mesure **SoC / tension / température** via **I²C**) ;
-- un **fusible interne 2 A**, un **PTC** et un **NTC**.
+Le **Skadi 6-Bay Smart Charger** permet de **ramener automatiquement chaque batterie au seuil de ~30 % SoC**, qu'elle soit initialement trop basse (charge) ou trop haute (décharge via ELOAD externe).
 
-La **carte maître** n’exécute **pas** la régulation CC/CV :  
-elle agit comme **contrôleur d’alimentation** et d’interface :
+### Fonctionnalités principales
 
-- **Autoriser ou couper le 12 V** vers chaque baie (charge vers ~30 % SoC) ;  
-- **Rediriger une baie vers un ELOAD externe** pour la décharge contrôlée lorsque le SoC est trop élevé ;  
-- **Superviser** l’état de chaque pack via I²C (SoC, tension, température, alarmes) ;  
-- **Afficher** l’état via LEDs (PCA9634) et **remonter les informations via BLE**.
+- ✅ **6 baies indépendantes** avec contrôle charge/décharge par MOSFET
+- ✅ **Supervision I²C** via multiplexeur TCA9548A + répéteurs TCA9803
+- ✅ **Fuel gauge MAX17263** intégré dans chaque pack (SoC, température, tension)
+- ✅ **Machine à états finie (FSM)** avec initialisation automatique ModelGauge m5 EZ
+- ✅ **Télémétrie BLE** (HC-08) + UART + USB CDC
+- ✅ **Affichage LED** par baie via driver PCA9634
+- ✅ **Watchdog matériel** (WWDG) pour sécurité
 
 ---
 
-### ⚙️ Spécifications prévues
+## 🔧 Architecture matérielle
 
-| Élément | Description |
-|---|---|
-| **Alimentation principale** | 12 V / 12 A DC |
-| **Nombre de baies** | 6 baies indépendantes (commutation high-side MOSFET) |
-| **Connectique par baie** | 2×6 pogo pins *(12 V, GND, SDA, SCL, DET, réservé)* |
-| **Électronique pack** | **BQ24610** (chargeur CC/CV) + **MAX17263** (fuel gauge I²C) |
-| **Carte maître** | **STM32L031K6** + **TCA9548A** (MUX I²C) + **PCA9634** (LEDs) + **BLE HC-08** |
-| **Alim logique 3.3 V** | Buck synchrone **TPS562201** (12 V → 3.3 V / 2 A) |
-| **Ventilation** | Ventilateur 12 V **en fonctionnement continu** (≈ 27 dB), sans contrôle PWM |
-| **Stratégie SoC** | **Charge** (12 V ON) ou **décharge** (ELOAD) pour converger vers ~30 % SoC |
+### Alimentation
+- **Entrée**: 12V DC (fusible 12A rapide)
+- **Buck 3.3V**: TPS562200 (12V → 3.3V, 2A)
+- **Protection**: TVS, NTC, condensateurs bulk
 
----
+### Microcontrôleur
+- **MCU**: STM32F103C8Tx (ARM Cortex-M3, 48 pins)
+- **Horloge**: 16 MHz (cristal externe HSE)
+- **Watchdog**: WWDG (Window Watchdog) avec refresh toutes les 10ms
+- **Interfaces**:
+  - USB 2.0 Type-C (protection USBLC6-2SC6)
+  - SWD (Tag-Connect TC2030-NL)
+  - UART2 (115200 baud, BLE HC-08)
+  - I²C1 (100 kHz)
+  - ADC1 (mesure tension 12V)
 
-## ⚙️ 2 — Architecture du système et logique firmware
+### Gestion des baies (×6)
 
-Le **Skadi 6-Bay Smart Charger** est une plateforme modulaire conçue pour ajuster automatiquement l’état de charge de six batteries **Li-ion 2S Skadi (Excel 2EXL1505)** afin de respecter la limite réglementaire de **30 % SoC** imposée par les normes **IATA DGR / UN 3480**.  
-Le système repose sur une **carte maître** qui pilote la distribution du 12 V, supervise l’état de chaque pack, et commande la décharge via un **ELOAD externe** lorsque nécessaire.
+Chaque baie dispose de:
+- **Commutation charge**: P-MOSFET AO4407A + driver N-MOSFET DMG2302U
+- **Commutation décharge**: P-MOSFET AO4407A + driver N-MOSFET DMG2302U
+- **Répéteur I²C**: TCA9803 (isolation 3.3V ↔ pack)
+- **Protection**: Diodes 1N4148WT, résistances de limitation
+- **Points de test**: CHG_GATE, DIS_GATE
+- **Connecteur**: 2 broches pogo pins (BAT+/BAT-)
 
----
+### Multiplexage I²C
+- **Circuit**: TCA9548APWR (8 canaux, 6 utilisés)
+- **Fonction**: Communication I²C individuelle avec chaque pack
+- **Pull-ups**: 2.2kΩ sur bus principal, 10kΩ sur multiplexeur
 
-### 🧩 Architecture matérielle (vue fonctionnelle)
-
-| Bloc fonctionnel | Rôle principal |
-|------------------|----------------|
-| **Alimentation 12 V / 12 A** | Source commune, protégée (fusible, TVS, NTC, condensateurs bulk) |
-| **Buck 12 V → 3.3 V (TPS562201)** | Alimentation logique (MCU, MUX, buffers, LEDs, BLE) |
-| **MOSFETs high-side ×6 (AO4407A)** | Commutation du 12 V pour chaque baie |
-| **Drivers N-MOS (DMG2302UX)** | Commande des grilles des P-MOSFETs high-side |
-| **MUX I²C TCA9548A** | Sélection de chaque baie sur le bus I²C |
-| **Buffers I²C TCA9803 (×6)** | Isolation et level-shift des lignes I²C vers les packs |
-| **MCU STM32L031K6** | Supervision, lecture SoC/T°, décision charge/décharge, télémétrie |
-| **PCA9634** | Pilotage des LEDs d’état (1 LED/baie + éventuelle LED système) |
-| **ELOAD externe** | Décharge sécurisée et précise (une baie à la fois, mode CC) |
-| **Ventilateur 12 V** | Ventilation **en continu** du châssis, sans pilotage MCU |
-| **BLE HC-08** | Télémétrie et diagnostic sans fil (SoC, tensions, états, faults) |
-
-Chaque baie est indépendante et équipée d’une interface **2×6 pogo pins** (12 V, GND, SDA, SCL, DET, réservé).  
-Les batteries embarquent déjà BQ24610 + MAX17263 + protections internes : la carte maître se contente de **gérer le 12 V et l’ELOAD**, et de **lire les mesures**.
+### Pilotage des LEDs
+- **Driver**: PCA9634PW (8 canaux PWM)
+- **Résistances**: 680Ω par LED
+- **Contrôle**: Via I²C depuis MCU
 
 ---
 
-### 🧠 Architecture firmware (FSM)
+## 🧠 Architecture Firmware
 
-Le firmware est organisé sous forme de **machine à états finis (FSM)**, pilotée par le STM32L031K6, qui traite les baies **séquentiellement**.
 
-#### Séquence de fonctionnement (par baie)
 
-1. **INIT**  
-   - Configuration MCU, I²C, MUX TCA9548A, buffers TCA9803.  
-   - Initialisation du MAX17263 via **ModelGauge m5 EZ** (modèle Li-ion compatible NCR / EXCELL 2EXL1505).  
-   - Détection de présence du pack (DET, tension, communication I²C).
+![Diagramme d'architecture firmware](./Docs/diag_1.png)
 
-2. **CHECK**  
-   - Lecture cyclique (par ex. toutes les **5 s**) du SoC, de la tension pack et de la température.  
-   - Décision : CHARGE, DÉCHARGE ou STABLE.
-
-3. **CHARGE (12 V ON)**  
-   - Activation du MOSFET high-side pour alimenter le BQ24610 en 12 V.  
-   - Maintien jusqu’à ce que le SoC atteigne la zone cible (≈ 30 % + hystérésis) ou qu’un timeout soit atteint.
-
-4. **DÉCHARGE (ELOAD)**  
-   - Sélection d’une seule baie à la fois vers l’ELOAD externe (mode courant constant).  
-   - Maintien jusqu’à ce que le SoC redescende autour de 30 % ou qu’un timeout soit atteint.
-
-5. **STABLE (~30 % SoC)**  
-   - Ni charge ni décharge : la baie reste en simple surveillance.  
-   - LEDs et télémétrie indiquent que la batterie est prête pour le stockage ou l’expédition.
-
-6. **FAULT**  
-   - En cas de surchauffe, tension hors plage, erreur I²C persistante ou défaut pack.  
-   - Coupure du 12 V et de l’ELOAD, mise à jour des LEDs et remontée d’un code d’erreur via BLE.
-
-Les baies sont traitées en **round-robin** (une par une, en boucle), ce qui simplifie la gestion de puissance et évite les pointes de courant.
-
----
-
-## 🔋 3 — Référence batterie : Excel 2EXL1505 (Skadi 2S Li-ion Pack)
-
-Le chargeur est conçu pour les **batteries Skadi 2S Li-ion (Excel 2EXL1505)**, composées de deux cellules de marque **EXCELL**,  
-électriquement **équivalentes aux Panasonic NCR18650B**.  
-Chaque pack intègre sa propre carte électronique, comprenant :
-
-- un **chargeur BQ24610** (profil CC/CV, fin de charge à 8.4 V) ;  
-- un **fuel-gauge MAX17263** (mesure SoC, tension, température via I²C) ;  
-- un **capteur NTC** pour la mesure thermique (valeur typique entre **10 kΩ et 47 kΩ**, à confirmer) ;  
-- un **fusible interne 2 A** et un **PTC réarmable**.
-
----
-
-### 3.1 — Caractéristiques principales
-
-| Paramètre | Valeur typique | Commentaire |
-|------------|----------------|--------------|
-| **Type de pack** | Li-ion 2S (2 × 18650) | Cellules EXCELL 2EXL1505 (≈ NCR18650B) |
-| **Chimie** | NCR (Nickel-Cobalt) | Compatible profil EZ Li-ion standard |
-| **Tension nominale** | 7.2 V | (3.6 V × 2 cellules) |
-| **Tension maximale** | 8.4 V | Fin de charge CV |
-| **Tension minimale** | 5.0 V | Coupure sécurité (≈2.5 V/cellule) |
-| **Capacité nominale** | 3.3 Ah | min. 3.25 Ah @ 25 °C |
-| **Énergie spécifique** | ≈ 23.8 Wh / pack | — |
-| **Courant de charge recommandé** | 1.6 A (0.5 C) | CC/CV – coupure à I_term faible |
-| **Température de charge** | 0 → 45 °C | Limite thermique via NTC |
-| **Température de décharge** | –20 → 60 °C | Surveillance par fuel-gauge |
-| **Protection interne** | Fusible 2 A + PTC + NTC | Double sécurité intégrée |
-
----
-
-## 🧠 4 — Initialisation du MAX17263 — Mode EZ (ModelGauge m5 EZ)
-
-Le **MAX17263** exploite l’algorithme **ModelGauge m5 EZ**, permettant une initialisation simple, sans LUT spécifique.  
-Ce mode charge automatiquement un modèle interne optimisé pour les chimies **Li-ion NCR/NCA**, compatible avec les cellules **EXCELL 2EXL1505 / NCR18650B**.
-
-### 4.1 — Séquence d’initialisation (résumé)
-
-1. **Reset logiciel** (`Command` 0x60 = 0x000F, attente ~200 ms).  
-2. **Programmation des paramètres pack** : capacité, énergie, seuils de tension, courant de fin de charge, compensation, etc.  
-3. **Configuration thermique** : NTC externe comme source température.  
-4. **Activation du modèle EZ** (`ModelCfg` 0xDB = 0x8000, attente 1–2 s).  
-5. **Option : sauvegarde NVM** (`Command` 0x60 = 0xE904).
-
-Après cette séquence, le SoC, la tension et la température sont disponibles avec une précision suffisante pour piloter la logique de charge/décharge autour de **30 % SoC**.
-
----
-
-## ⚙️ 5 — Dimensionnement & Formules
-
-Cette section regroupe les calculs de dimensionnement électrique et thermique afin de justifier les choix d’alimentation, de protection et de routage PCB.
-
-### 5.1 — Alimentation principale
-
-- Source : **12 V / 12 A (150 W max)**  
-- Nombre de baies : **6**  
-- Charge typique par baie : **1.6 A @ 7.4 V** (via BQ24610)  
-- Rendement estimé pack (chargeur interne) : **η ≈ 90 %**
-
-**Courant d’entrée par baie :**  
-I_in = (V_bat × I_bat) / (η × V_in)  
-≈ (7.4 V × 1.6 A) / (0.9 × 12 V) ≈ **1.1 A**
-
-👉 Chaque baie consomme ≈ **1.1 A** côté 12 V.
-
-### 5.2 — Courant total et marge PSU
-
-I_total = 6 × 1.1 A ≈ **6.6 A**  
-En ajoutant pertes + logique + ventilateur : **≈ 8 A**.
-
-Avec une alimentation 12 V / 12 A, la marge est confortable.  
-Le traitement séquentiel des baies limite naturellement les pics de courant.
-
-### 5.3 — Puissance
-
-P_out_bay = 7.4 V × 1.6 A ≈ **11.8 W**  
-P_in_bay ≈ 11.8 / 0.9 ≈ **13.2 W**  
-P_total_6bays ≈ 6 × 13.2 ≈ **79 W**, bien en dessous de 150 W.
-
-### 5.4 — Protection & filtrage d’entrée
-
-- Fusible temporisé 15 A en entrée.  
-- NTC MF72-5D-11 pour limiter le courant d’appel.  
-- TVS SMBJ15A pour les transitoires.  
-- Condensateurs bulk 470–1000 µF / 25 V + céramiques 100 nF.
-
-### 5.5 — Pistes PCB (cuivre 1 oz)
-
-| Type de piste | Courant max | Largeur mini conseillée |
-|----------------|-------------|--------------------------|
-| Bus 12 V | ≈10.5 A max | ≥ 3.0 mm |
-| Ligne baie | 1.1–1.3 A | ≥ 1.0 mm |
-| Retour GND | idem | Plan continu, via stitching |
-| Signaux I²C/logique | < 5 mA | 0.25 mm |
-
-### 5.6 — Gestion thermique & ventilation
-
-Sources de pertes principales :
-- MOSFETs AO4407A : < 0.2 W/baie à 1.1 A.  
-- Buck TPS562201 : ≈ 0.5–0.7 W selon charge.  
-- Logique : < 0.2 W.
-
-Total pertes ≈ **1.8–2.0 W**.
-
-Un **ventilateur 12 V** fonctionne en **permanence** à faible vitesse (~27 dB), ce qui suffit pour évacuer la chaleur sans nécessiter de contrôle PWM.  
-Le firmware surveille principalement la **température pack** (pour couper CHARGE / DÉCHARGE en cas d’anomalie), mais ne pilote pas le ventilateur.
-
----
-
-## 🧠 6 — Paramètres d’exploitation & Politiques Firmware
-
-Cette section fixe les seuils, temporisations, règles de sécurité, arbitrage ELOAD, retours visuels et télémétrie.
-
-### 6.1 — Seuils & temporisations (valeurs initiales)
-
-| Élément | Valeur | Détail | Objectif |
-|---|---:|---|---|
-| SoC cible | 30 % | — | Conformité IATA / UN 3480 |
-| Hystérésis SoC | 28 % / 30.5 % | bas / haut | Évite le pompage charge/décharge |
-| Période de scan | 5 s/baie | lecture I²C + décision | Stabilité / charge CPU |
-| T° pack max | 45 °C | via MAX17263 (NTC) | Coupure CHARGE/DÉCHARGE |
-| Timeout décharge | 20 min | par session | Protéger en cas d’ELOAD mal réglé |
-| Timeout charge | 25 min | par session | Protéger en cas de pack anormal |
-| Re-try erreur I²C | 3 essais | 50 ms d’intervalle | Robustesse bus |
-
-### 6.2 — Matrice sécurité (fault → action)
-
-| Condition | Détection | Action immédiate | Récupération |
-|---|---|---|---|
-| T° pack > 45 °C | MAX17263.Temp | OFF 12 V, OFF ELOAD, log | Attendre < 40 °C → retour CHECK |
-| Tension pack < 5.0 V | MAX17263.VCell | OFF ELOAD | Autoriser charge si T° ok |
-| Tension pack > 8.6 V | ADC + gauge | OFF 12 V, log | Reprise après 5 s si normalisé |
-| I²C bloqué | NACK / timeout | Reset canal MUX, 3 re-try | Isoler baie si persiste |
-| Alim 12 V faible | ADC 12 V < 10.8 V | Stop nouvelles charges, log | Reprise > 11.5 V |
-| ELOAD indispo | GPIO / handshake | Sauter baie, replanifier | Re-try au cycle suivant |
-
-### 6.3 — Arbitrage ELOAD (une baie à la fois)
-
-1. Sélection : baie la plus au-dessus de 30 % SoC.  
-2. Exclusivité : verrou logiciel `ELOAD_LOCK`.  
-3. Interlock : interdire 12 V et ELOAD simultanés sur une même baie.  
-4. Courant ELOAD typique : 0.5–1.0 A (selon dissipation pack).  
-5. Fin session : SoC ≤ 30 % ou timeout atteint.
-
-### 6.4 — Politique d’activation 12 V (charge)
-
-- Autoriser la charge si : SoC < 28 % et T° < 45 °C.  
-- Interdire si : alimentation < 10.8 V ou erreur pack.  
-- Fin de charge : SoC ≥ 30.5 % ou timeout atteint.
-
-### 6.5 — Indications visuelles (LEDs via PCA9634)
-
-| État baie | Couleur / pattern | Signification |
-|---|---|---|
-| IDLE (pack absent) | LED éteinte | Aucun pack détecté |
-| CHECK | Blanc fixe faible | Lecture SoC / T° / V |
-| CHARGE | Vert clignotement lent | 12 V actif |
-| DÉCHARGE | Orange clignotement lent | ELOAD actif |
-| STABLE (~30 %) | Bleu fixe | Conforme expédition |
-| FAULT | Rouge clignotement rapide | Coupure sécurité / défaut |
-
-### 6.6 — Télémétrie BLE (HC-08)
-
-**Périodicité :** 1 trame / 5 s / baie active.  
-**Format texte CSV**, simple à parser côté application :
+### Structure du code
 
 ```
-BAY,<id>,STATE,<CHK|CHG|DIS|OK|FLT>,SOC,<%>,VCELL,<mV>,TEMP,<0.1°C>,ELD,<0|1>,ERR,<code>
+firmware/
+├── Core/
+│   ├── Src/
+│   │   ├── main.c              # Point d'entrée, init périphériques
+│   │   ├── stm32f1xx_it.c      # Interruptions
+│   │   └── system_stm32f1xx.c  # Config système
+│   └── Inc/
+├── App/
+│   ├── app.c                   # Machine à états principale
+│   ├── app_config.h            # Constantes (seuils, timeouts)
+│   ├── board_io.c              # Abstraction GPIO/ADC
+│   ├── drivers_tca9548a.c      # Driver MUX I²C
+│   ├── drivers_max17263.c      # Driver fuel gauge
+│   ├── drivers_pca9634.c       # Driver LEDs
+│   ├── services_cmd.c          # Parser commandes BLE/UART
+│   ├── services_led.c          # Logique LEDs
+│   ├── services_telemetry.c    # Télémétrie UART/USB
+│   └── services_identity.c     # UID unique STM32
+└── USB_DEVICE/                 # Stack USB CDC
 ```
 
-**Exemple :**
+### Boucle principale (main.c)
+
+```c
+void main(void) {
+  HAL_Init();
+  SystemClock_Config();  // HSE 16MHz → PLL 48MHz
+  
+  // Init périphériques
+  MX_GPIO_Init();
+  MX_ADC1_Init();
+  MX_I2C1_Init();        // 100kHz
+  MX_USART2_UART_Init(); // 115200 baud
+  MX_WWDG_Init();        // Watchdog
+  MX_USB_DEVICE_Init();  // CDC
+  
+  App_Init(&g_app);
+  HAL_UART_Receive_IT(&huart2, &ble_rx_byte, 1);
+  
+  while(1) {
+    if ((HAL_GetTick() - t0) >= 10ms) {  // Tick 10ms
+      t0 = HAL_GetTick();
+      App_Tick(&g_app);                  // FSM principale
+      HAL_WWDG_Refresh(&hwwdg);          // Feed watchdog
+    }
+  }
+}
+```
+
+### Machine à états finie (FSM)
+
+Le firmware implémente une FSM par baie avec **scan round-robin** (une baie à la fois, cycle de 5s/baie).
+
+#### États de la FSM
 
 ```
-BAY,03,STATE,DIS,SOC,47.2,VCELL,7730,TEMP,314,ELD,1,ERR,0
+┌─────────────────────────────────────────────────────────────┐
+│                     INIT (démarrage)                        │
+│  • Config GPIO, I²C, MUX, LEDs                              │
+│  • Reset tous les enable charge/décharge                    │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+              ┌────────────────┐
+              │    ABSENT      │◄────────────┐
+              │ • Pack non     │             │
+              │   détecté      │             │
+              └────────┬───────┘             │
+                       │ DET=1               │ DET=0
+                       ▼                     │
+              ┌────────────────┐             │
+              │     CHECK      │─────────────┘
+              │ • Lecture I²C  │
+              │ • I²C timeout  │
+              └────────┬───────┘
+                       │ I²C OK
+                       ▼
+              ┌────────────────┐
+              │   INIT_BAT     │ 
+              │ • Gauge_EZ_Init│
+              │ • Init modèle  │
+              │   ModelGauge   │
+              └────────┬───────┘
+                       │
+         ┌─────────────┼─────────────┐
+         │             │             │
+    SoC<28%       28≤SoC≤30.5    SoC>30.5%
+         │             │             │
+         ▼             ▼             ▼
+   ┌─────────┐   ┌─────────┐   ┌──────────┐
+   │ CHARGE  │   │ STABLE  │   │DISCHARGE │
+   │ 12V ON  │   │ Repos   │   │ELOAD ON  │
+   │         │   │ ~30%    │   │          │
+   └────┬────┘   └────┬────┘   └────┬─────┘
+        │             │             │
+        │ SoC≥30.5    │ Drift       │ SoC≤30.5
+        └─────────────┼─────────────┘
+                      ▼
+                ┌──────────┐
+                │  STABLE  │
+                └──────────┘
+                      │
+                      │ Temp>45°C, I²C fail, timeout
+                      ▼
+                ┌──────────┐
+                │  FAULT   │
+                │ OFF all  │
+                └──────────┘
+```
+
+#### Description des états
+
+| État | Description | Transitions |
+|------|-------------|-------------|
+| **INIT** | Initialisation système, reset des GPIO | → ABSENT (pack absent)<br>→ CHECK (pack détecté) |
+| **ABSENT** | Pack non détecté (DET=0 ou I²C NACK) | → CHECK (insertion pack) |
+| **CHECK** | Lecture I²C initiale, vérification température | → INIT_BAT (I²C OK)<br>→ FAULT (I²C fail > 3×) |
+| **INIT_BAT** | **Initialisation ModelGauge m5 EZ**<br>• Appel `Gauge_EZ_Init()`<br>• Configuration fuel gauge | → CHARGE (SoC < 28%)<br>→ DISCHARGE (SoC > 30.5%)<br>→ STABLE (28% ≤ SoC ≤ 30.5%)<br>→ FAULT (erreur init) |
+| **CHARGE** | 12V activé, charge CC/CV par BQ24610 | → STABLE (SoC ≥ 30.5%)<br>→ FAULT (timeout 25min, T>45°C) |
+| **DISCHARGE** | ELOAD actif (une baie à la fois) | → STABLE (SoC ≤ 30.5%)<br>→ FAULT (timeout 20min, T>45°C) |
+| **STABLE** | SoC autour de 30%, repos | → CHARGE (SoC < 28%)<br>→ DISCHARGE (SoC > 30.5%) |
+| **FAULT** | Erreur (température, I²C, timeout) | → CHECK (récupération auto si T<40°C, I²C OK) |
+
+### Paramètres d'exploitation (app_config.h)
+
+```c
+// Seuils SoC
+#define SOC_LOW_START      28.0f    // Démarrer charge
+#define SOC_STABLE_HIGH    30.5f    // Arrêter charge/décharge
+#define SOC_DISCH_START    30.5f    // Démarrer décharge
+
+// Seuils température
+#define TEMP_MAX_C         45.0f    // Coupure sécurité
+#define TEMP_RECOVER_C     40.0f    // Récupération auto
+
+// Timeouts
+#define CHG_TIMEOUT_MS     (25u * 60u * 1000u)  // 25 min
+#define DIS_TIMEOUT_MS     (20u * 60u * 1000u)  // 20 min
+
+// Périodes
+#define SCAN_PERIOD_MS_PER_BAY  5000u   // 5s/baie
+#define CTRL_PERIOD_MS          100u    // 100ms (FSM)
+#define TELEMETRY_PERIOD_MS     5000u   // 5s
+
+// I²C
+#define I2C_RETRY_MAX          3u
+#define I2C_RETRY_DELAY_MS     50u
+```
+
+### Arbitrage ELOAD
+
+**Règle**: Une seule baie à la fois peut être connectée à l'ELOAD.
+
+```c
+void eload_select_set(app_t *a, uint8_t allow_dis[BAY_COUNT])
+{
+  // Sélectionner jusqu'à eload_slots baies (1 par défaut)
+  // Prioriser la baie avec le SoC le plus élevé
+  
+  for (uint8_t slot = 0; slot < a->eload_slots; slot++) {
+    float best_soc = SOC_DISCH_START;
+    int best_bay = -1;
+    
+    for (uint8_t i = 0; i < BAY_COUNT; i++) {
+      if (allow_dis[i]) continue;           // Déjà sélectionnée
+      if (!bay[i].present || !bay[i].i2c_ok) continue;
+      if (bay[i].state == BAY_S_FAULT) continue;
+      if (bay[i].temp_c >= TEMP_MAX_C) continue;
+      if (bay[i].soc <= SOC_DISCH_START) continue;
+      
+      if (bay[i].soc > best_soc) {
+        best_soc = bay[i].soc;
+        best_bay = i;
+      }
+    }
+    
+    if (best_bay >= 0) allow_dis[best_bay] = 1;
+  }
+}
+```
+
+### Initialisation ModelGauge m5 EZ
+
+**État INIT_BAT**: Après détection du pack et lecture I²C réussie, le firmware initialise le fuel gauge:
+
+```c
+// drivers_max17263.c
+HAL_StatusTypeDef Gauge_EZ_Init(void)
+{
+  // 1. Soft reset (optionnel)
+  // i2c_w16(0x60, 0x000F);  // Command = 0x000F
+  // HAL_Delay(200);
+  
+  // 2. Configuration ModelGauge m5 EZ
+  // i2c_w16(0xDB, 0x8000);  // ModelCfg = 0x8000 (EZ mode)
+  // HAL_Delay(2000);        // Attendre convergence modèle
+  
+  // 3. Paramètres pack (exemples)
+  // i2c_w16(0x18, 3300);    // DesignCap = 3300 mAh
+  // i2c_w16(0x23, 8400);    // VEmpty = 5.0V (2×2.5V)
+  
+  // Pour l'instant, retour OK (à compléter selon datasheet)
+  return HAL_OK;
+}
+```
+
+**Note**: L'implémentation complète sera finalisée avec les paramètres exacts du pack Excel 2EXL1505.
+
+### Télémétrie
+
+Format CSV avec CRC16-CCITT envoyé toutes les 5s par baie:
+
+```
+UID,<24_hex_chars>,TS,<ms>,BAY,<1-6>,ST,<état>,SOC_D10,<0.1%>,VCELL_MV,<mV>,TEMP_D10,<0.1°C>,PRES,<0|1>,I2C,<0|1>,ERR,<code>,ELOADS,<slots>,VIN_CV,<cV>,CRC,<hex>
+```
+
+**Exemple**:
+```
+UID,2A01C3F08B1D77AA0019FF10,TS,123456,BAY,3,ST,DIS,SOC_D10,472,VCELL_MV,7730,TEMP_D10,314,PRES,1,I2C,1,ERR,0,ELOADS,1,VIN_CV,1215,CRC,A3F2
+```
+
+### Commandes BLE/UART
+
+Format texte simple:
+
+```
+ELOADS=<1-6>   # Nombre de baies ELOAD simultanées
+MODE=30        # Mode ~30% SoC (défaut)
+MODE=100       # Mode charge 100%
 ```
 
 ---
 
-## 🧰 7 — Notes de conception matérielle & Routage PCB
+## 📊 Schémas du PCB
 
-Cette section résume les recommandations de placement, de routage et de CEM.
+Le projet contient 7 pages de schémas KiCad:
 
-### 7.1 — Placement des blocs critiques
-
-- MOSFETs high-side AO4407A : proches des connecteurs de baies.  
-- Buffers I²C TCA9803 : un par baie, très proches des pogo pins.  
-- MUX TCA9548A : centré, lignes courtes vers MCU.  
-- Buck TPS562201 :  
-  - près de l’entrée 12 V ;  
-  - boucle VIN–SW–inductance–Cout compacte ;  
-  - condensateur Cin à 2–3 mm de VIN/GND.  
-- STM32L031K6 : dans une zone logique calme, plan GND propre.  
-- PCA9634 : proche des LEDs.  
-- HC-08 : éloigné de la self du buck et des pistes 12 V.
-
-### 7.2 — Routage I²C
-
-- Bus racine 3.3 V depuis MCU → MUX → buffers.  
-- SDA/SCL par baie < 10 cm (pogo + câbles).  
-- Résistances série 33–47 Ω sur SDA/SCL côté MCU.  
-- Pull-ups 2.2–4.7 kΩ (bus + segments).  
-- Plan GND continu sous les lignes I²C.
-
-### 7.3 — Routage puissance
-
-- Bus 12 V ≥ 3 mm, cuivre 1 oz.  
-- Vers baies ≥ 1 mm.  
-- Via-stitching autour des MOSFETs.  
-- Condos 10 µF + 100 nF très proches des MOSFETs et des pogo pins.
-
-### 7.4 — Ventilation
-
-- Ventilateur 12 V, 40×40×10 mm, alimenté **directement** sur 12 V (marche en continu).  
-- Positionné pour balayer les MOSFETs et la zone buck.  
-- Pas de pilotage PWM ni MOSFET de commande requis.
-
-### 7.5 — CEM / EMI
-
-- TVS SMBJ15A sur l’entrée 12 V.  
-- Ferrite d’entrée possible pour filtrer les hautes fréquences.  
-- Condensateurs 100 nF à chaque VDD (MCU, MUX, buffers, PCA9634).  
-- Éviter les pistes rapides sous l’antenne BLE.  
-- Plan GND solide, via stitching, pas de coupures sous les signaux sensibles.
+1. **Page 1**: Vue d'ensemble (hiérarchie des feuilles)
+2. **Page 2**: Alimentation 12V → Buck 3.3V
+3. **Page 3**: MCU STM32F103C8T + USB + SWD + BLE
+4. **Page 4**: Multiplexeur I²C TCA9548A
+5. **Page 5**: Buck converter 3.3V (TPS562200)
+6. **Page 6**: Baie #1 (répété ×6)
+7. **Page 7**: Driver LEDs PCA9634
 
 ---
 
-## 📦 8 — BOM principale (références clés)
+## 🛠️ Composants principaux
 
-Cette section liste les principaux composants.  
-La BOM détaillée (R/C/D, footprints, tolérances) sera maintenue dans `hardware/bom/`.
-
-### 8.1 — Alimentation & distribution 12 V
-
-| Fonction | Référence / MPN | Boîtier | Notes |
-|---------|------------------|---------|-------|
-| Entrée DC 12 V | Connecteur borne / jack | — | Selon mécanique du châssis |
-| Fusible principal | Bel Fuse 3SB 15A ou équiv. | 5×20 mm | Protection en entrée |
-| NTC inrush | MF72-5D-11 ou équiv. | Disc | Limitation courant d’appel |
-| TVS 12 V | SMBJ15A | SMB | Protection surtensions / transitoires |
-| Condensateurs bulk | 470–1000 µF / 25 V | Radial / SMT | Lissage bus 12 V |
-| Buck 12 V → 3.3 V | TPS562201 (TI) ou équiv. | SOT-23 / TSOT-6 | Alim logique 3.3 V (2 A max) |
-| Condensateurs buck | Selon datasheet TPS562201 | 0805 / 1206 | Cin, Cout, bootstrap, etc. |
-
-### 8.2 — Commutation par baie (×6)
-
-| Fonction | Référence / MPN | Boîtier | Notes |
-|---------|------------------|---------|-------|
-| MOSFET high-side 12 V | AO4407A (AOS) ou équiv. | SO-8 | R_DS(on) faible |
-| Driver N-MOS | DMG2302UX (Diodes Inc.) | SOT-23 | Commande de grille |
-| Résistance gate | 47–100 Ω | 0603 | Limite dV/dt |
-| Pull-up gate | 100 kΩ | 0603 | OFF par défaut |
-| Zener G-S | BZT52 (12–15 V) | SOD-123 | Clamp transitoires |
-| Découplage baie | 10 µF + 100 nF | 1206 + 0603 | Local près des pogo pins |
-
-### 8.3 — Logique, I²C & LEDs
-
-| Fonction | Référence / MPN | Boîtier | Notes |
-|---------|------------------|---------|-------|
-| MCU principal | STM32L031K6T6 (ST) | LQFP-32 | Cœur firmware, basse conso |
-| Superviseur reset | TPS3809 (TI) | SOT-23-3 | Reset propre 3.3 V |
-| MUX I²C | TCA9548A (TI) | TSSOP-24 | 8 canaux, 6 utilisés |
-| Buffers I²C (×6) | TCA9803 (TI) | VSSOP-8 | Isolation / level shifting |
-| Driver LEDs | PCA9634 (NXP) | TSSOP-28 | 16 canaux PWM |
-| Pull-up I²C | 2.2–4.7 kΩ | 0603 | Bus principal + segments |
-| Résistances série I²C | 33–47 Ω | 0603 | Amortissement / protection |
-| Découplage logique | 100 nF + 4.7 µF | 0603 + 1206 | À chaque VDD (MCU, MUX, buffers, LED driver) |
-
-### 8.4 — Interface & télémétrie
-
-| Fonction | Référence / MPN | Boîtier | Notes |
-|---------|------------------|---------|-------|
-| Module BLE | HC-08 ou équiv. BLE UART | Module | Télémétrie / debug |
-| Interface UART debug | Header 3 pins | 2.54 mm | TX/RX/GND |
-| Connecteur SWD | Tag-Connect 6 pins ou pads SWD | — | Programmation / debug STM32 |
-
-### 8.5 — Connectique baies & mécanique
-
-| Fonction | Référence / MPN | Boîtier | Notes |
-|---------|------------------|---------|-------|
-| Pogo pins baies | Mill-Max 858-xx ou équiv. | — | Matrice 2×6 : 12 V, GND, SDA, SCL, DET, réservé |
-| Guides mécaniques | Goupilles / inserts | — | Alignement batterie / pogo |
-| Points de test | Pads GND / 12 V / I²C | — | Debug, validation production |
-
-### 8.6 — Ventilation & capteurs thermiques
-
-| Fonction | Référence / MPN | Boîtier | Notes |
-|---------|------------------|---------|-------|
-| Ventilateur | 12 V, 40×40×10 mm (ex. Sunon) | — | Fonctionnement continu (~27 dB) |
-| NTC châssis (option) | 10 kΩ B3950 (à confirmer) | 0603 | Mesure T° interne (monitoring uniquement) |
-
-### 8.7 — Protection & CEM
-
-| Fonction | Référence / MPN | Boîtier | Notes |
-|---------|------------------|---------|-------|
-| Réseau ESD I²C | PESD5V0S4 (Nexperia) ou équiv. | SOT-23-6 | Protection SDA/SCL + lignes externes |
-| Ferrites d’entrée (option) | ≥ 600 Ω @ 100 MHz | 0805 | Filtrage EMI sur 12 V |
-| Plan GND | — | — | Masse continue, via stitching autour des zones puissance |
+| Référence | Composant | Quantité | Description |
+|-----------|-----------|----------|-------------|
+| U1 | TPS562200 | 1 | Buck 12V→3.3V (2A) |
+| U2 | TCA9803 | 6 | Répéteur I²C par baie |
+| U3 | USBLC6-2SC6 | 1 | Protection USB |
+| U4 | STM32F103C8Tx | 1 | MCU principal (48MHz) |
+| U6 | TCA9548APWR | 1 | MUX I²C 8 canaux |
+| IC1 | PCA9634PW | 1 | Driver LED 8 canaux |
+| Q_CHG1/2 | AO4407A | 12 | P-MOSFET charge (×2/baie) |
+| Q_DIS2 | AO4407A | 6 | P-MOSFET décharge |
+| Q_CHG/DIS_DRV | DMG2302U | 12 | N-MOSFET driver |
+| F1 | Fusible 12A | 1 | Protection entrée |
+| D1 | TVS | 1 | Protection surtension |
+| Y1 | Cristal 16MHz | 1 | Horloge externe HSE |
+| L1 | Inductance 3.3µH | 1 | Buck converter |
 
 ---
 
-## 📂 9 — Structure du dépôt
+## 🔌 Pinout MCU (STM32F103C8T)
 
-```text
+### Contrôle baies
+| Pin | Signal | Fonction |
+|-----|--------|----------|
+| PA0 | BAY1_CHG_EN | Enable charge baie 1 |
+| PA1 | BAY2_CHG_EN | Enable charge baie 2 |
+| PA2 | BAY3_CHG_EN | Enable charge baie 3 |
+| PA3 | BAY4_CHG_EN | Enable charge baie 4 |
+| PA4 | BAY1_DIS_EN | Enable décharge baie 1 |
+| PA5 | BAY2_DIS_EN | Enable décharge baie 2 |
+| PB0 | BAY5_CHG_EN | Enable charge baie 5 |
+| PB1 | BAY6_CHG_EN | Enable charge baie 6 |
+| PB10 | BAY6_DIS_EN | Enable décharge baie 6 |
+| PB11 | BAY5_DIS_EN | Enable décharge baie 5 |
+| PB12 | BAY4_DIS_EN | Enable décharge baie 4 |
+| PB13 | BAY3_DIS_EN | Enable décharge baie 3 |
+
+### Communication
+| Pin | Signal | Fonction |
+|-----|--------|----------|
+| PB6 | I2C1_SCL | Horloge I²C (100kHz) |
+| PB7 | I2C1_SDA | Données I²C |
+| PA9 | UART_TX | TX vers BLE HC-08 |
+| PA10 | UART_RX | RX depuis BLE HC-08 |
+| PA11 | USB_D- | USB 2.0 D- |
+| PA12 | USB_D+ | USB 2.0 D+ |
+
+### Programmation/Debug
+| Pin | Signal | Fonction |
+|-----|--------|----------|
+| PA13 | SWDIO | Serial Wire Debug I/O |
+| PA14 | SWCLK | Serial Wire Clock |
+| PB3 | SWO | Serial Wire Output |
+| NRST | NRST | Reset (connecté à superviseur) |
+
+### ADC
+| Pin | Signal | Fonction |
+|-----|--------|----------|
+| PA0 | ADC_CH0 | Mesure tension 12V (diviseur 133k/33k) |
+
+---
+
+## 📐 Diagramme d'architecture
+
+```
+       12V DC Input (12A fusible)
+              │
+      ┌───────┴───────────┐
+      │   Protection      │
+      │ • TVS SMBJ15A     │
+      │ • Bulk caps       │
+      │                   │
+      └───────┬───────────┘
+              │
+      ┌───────┴───────────────────┐
+      │                           │
+      ▼                           ▼
+┌─────────────┐          ┌──────────────────┐
+│ Buck 3.3V   │          │  6× Bay Switches │
+│ TPS562200   │          │  AO4407A + DMG   │
+│ (2A)        │          │  (12V high-side) │
+└──────┬──────┘          └────────┬─────────┘
+       │                          │
+       ▼                          ▼
+┌──────────────────┐      ┌──────────────┐
+│  STM32F103C8T    │      │ Pogo Pins ×6 │
+│  • 48MHz         │      │ (Batt packs) │
+│  • WWDG          │      └──────────────┘
+│  • 10ms tick     │              │
+└────┬─────────────┘              │
+     │                            │
+     ├──► TCA9548A (I²C MUX) ─────┤
+     │         │                  │
+     │         └──► TCA9803 ×6 ───┘
+     │              (Buffers)
+     │
+     ├──► PCA9634 (LED driver)
+     │
+     ├──► USB Type-C
+     │
+     └──► UART2 → HC-08 (BLE)
+```
+
+---
+
+## 🚀 Utilisation
+
+### Programmation (SWD)
+
+1. Connecter programmeur ST-Link au header Tag-Connect (J2)
+2. Pins: VCC, GND, SWDIO, SWCLK, NRST, SWO
+3. Flasher avec STM32CubeIDE ou OpenOCD
+
+```bash
+# Exemple OpenOCD
+openocd -f interface/stlink.cfg -f target/stm32f1x.cfg \
+  -c "program firmware.elf verify reset exit"
+```
+
+### Configuration I²C
+
+- **TCA9548A** (MUX): Adresse 0x70 (A2=A1=A0=0)
+- **MAX17263** (Gauge): Adresse 0x6C (sur chaque canal MUX)
+- **PCA9634** (LEDs): Adresse 0x15 (A6-A0 configurables)
+
+### Contrôle via BLE/UART
+
+Connecter terminal série (115200 baud, 8N1):
+
+```
+ELOADS=2       # Autoriser 2 baies ELOAD simultanées
+MODE=30        # Mode ~30% SoC (défaut)
+MODE=100       # Mode charge 100%
+```
+
+### Télémétrie
+
+Recevoir les trames CSV toutes les 5s:
+
+```python
+import serial
+
+ser = serial.Serial('/dev/ttyUSB0', 115200)
+while True:
+    line = ser.readline().decode('utf-8').strip()
+    print(line)
+    # Parser: UID,xxx,TS,yyy,BAY,z,...
+```
+
+---
+
+## ⚡ Spécifications électriques
+
+| Paramètre | Valeur | Notes |
+|-----------|--------|-------|
+| Tension d'entrée | 12V DC ±10% | 10.8V min, 13.2V max |
+| Courant max | 12A | Fusible rapide |
+| Tension logique | 3.3V ±5% | Buck TPS562200 |
+| Courant par baie (charge) | ~1.1A @ 12V | Via BQ24610 interne pack |
+| Fréquence I²C | 100 kHz | Standard mode |
+| Fréquence UART | 115200 baud | 8N1, BLE HC-08 |
+| Watchdog timeout | ~50ms | WWDG, refresh 10ms |
+| Horloge système | 48 MHz | HSE 16MHz + PLL×6 |
+
+---
+
+## 🔒 Protections & Sécurité
+
+| Protection | Implémentation | Réaction |
+|------------|---------------|----------|
+| **Surtension 12V** | TVS SMBJ15A | Écrêtage transitoires |
+| **Surcourant** | Fusible 12A rapide | Coupure permanente |
+| **Température pack** | MAX17263 + NTC | OFF charge/décharge si >45°C |
+| **Watchdog** | WWDG matériel | Reset MCU si crash firmware |
+| **Timeout charge** | Software, 25 min | → FAULT |
+| **Timeout décharge** | Software, 20 min | → FAULT |
+| **Erreur I²C** | 3 retry + isolation baie | → FAULT si persiste |
+| **USB** | USBLC6-2SC6 | ESD protection |
+
+---
+
+## 🧪 Tests & Validation
+
+### Checklist matérielle
+
+- [ ] Continuité pistes 12V / GND
+- [ ] Court-circuits (test DRC KiCad)
+- [ ] Polarité condensateurs électrolytiques
+- [ ] Orientation MOSFETs, diodes, ICs
+- [ ] Soudure pogo pins
+
+### Checklist firmware
+
+- [ ] Communication I²C avec TCA9548A
+- [ ] Sélection canaux MUX (0-5)
+- [ ] Lecture MAX17263 (SoC, V, T)
+- [ ] Initialisation ModelGauge m5 EZ
+- [ ] Commutation MOSFETs charge/décharge
+- [ ] Télémétrie UART/USB
+- [ ] Watchdog (test crash volontaire)
+- [ ] LEDs (états FSM)
+- [ ] Commandes BLE
+
+### Procédure de test
+
+1. **Test bench**:
+   - Alim 12V/12A
+   - 6× packs Skadi (SoC variés: 20%, 35%, 50%, etc.)
+   - ELOAD programmable (mode CC, 0.5-1A)
+   - Multimètre, oscilloscope
+   - Terminal série (UART/BLE)
+
+2. **Scénarios**:
+   - Pack vide (10%) → CHARGE → STABLE (30%)
+   - Pack plein (80%) → DISCHARGE → STABLE (30%)
+   - Insertion/retrait pack → transitions ABSENT/CHECK
+   - Surchauffe simulée (chauffer NTC) → FAULT
+   - Déconnexion I²C → FAULT après 3 retry
+
+---
+
+## 📂 Structure du dépôt
+
+```
 Skadi-6Bay-Charger/
-├── hardware/           # Schémas, PCB KiCad
-├── firmware/           # Code STM32 + BLE
-├── docs/               # Images, graphiques, datasheets
-├── README.md           # Présent document
-└── LICENSE             # Licence projet
+├── hardware/
+│   ├── 6_bay_charg.kicad_pcb       # Layout PCB
+│   ├── 6_bay_charg.kicad_sch       # Schéma racine
+│   ├── Power.kicad_sch             # Alim 12V/3.3V
+│   ├── MCU.kicad_sch               # MCU + USB + SWD
+│   ├── MUX.kicad_sch               # TCA9548A
+│   ├── Buck_3.3V.kicad_sch         # TPS562200
+│   ├── bay1.kicad_sch              # Baie type
+│   ├── LEDs_driver.kicad_sch       # PCA9634
+│   └── bom/                        # Bill of Materials
+├── firmware/
+│   ├── Core/
+│   │   ├── Src/main.c
+│   │   └── Inc/main.h
+│   ├── App/
+│   │   ├── app.c                   # FSM principale
+│   │   ├── app_config.h            # Constantes
+│   │   ├── board_io.c              # GPIO/ADC
+│   │   ├── drivers_tca9548a.c
+│   │   ├── drivers_max17263.c
+│   │   ├── drivers_pca9634.c
+│   │   ├── services_cmd.c
+│   │   ├── services_led.c
+│   │   ├── services_telemetry.c
+│   │   └── services_identity.c
+│   └── USB_DEVICE/
+├── docs/
+│   ├── eos_logo.png
+│   ├── datasheets/
+│   └── images/
+├── README.md
+└── LICENSE
 ```
 
 ---
 
-## 🚀 10 — Étapes suivantes
+## 🔧 Développement
 
-1. Finaliser le schéma et la netlist (incluant TPS562201 et fan toujours ON).  
-2. Lancer le routage PCB en respectant les contraintes de puissance, I²C et CEM.  
-3. Prototyper une première carte et vérifier :  
-   - communication MAX17263 / MUX / buffers,  
-   - comportement MOSFETs / baies,  
-   - régulation 3.3 V (buck),  
-   - ventilation et thermique.  
-4. Ajuster les seuils firmware (SoC, temps, faults) selon les mesures réelles.  
+### Prérequis
+
+- **Hardware**: ST-Link V2/V3, alimentation 12V/12A
+- **Software**:
+  - STM32CubeIDE (ou Keil, IAR)
+  - KiCad 7.0+
+  - Terminal série (PuTTY, minicom)
+
+### Build firmware
+
+```bash
+cd firmware
+# Importer projet dans STM32CubeIDE
+# Build → Release
+# Flash via ST-Link
+```
+
+### Modification schémas
+
+```bash
+cd hardware
+kicad 6_bay_charg.kicad_pro
+# Modifier schémas
+# Générer netlist
+# Update PCB
+```
 
 ---
 
-© 2025 EOS Positioning Systems —
+## 🐛 Dépannage
+
+| Problème | Cause probable | Solution |
+|----------|----------------|----------|
+| Pas de détection pack | Pogo pins mal alignés | Vérifier mécanique, continuité |
+| I²C timeout | Pull-ups manquants/trop faibles | Ajouter 2.2kΩ, vérifier soudures TCA9803 |
+| SoC erroné | MAX17263 non initialisé | Vérifier `Gauge_EZ_Init()`, lire ModelCfg |
+| Reset MCU fréquent | Watchdog non rafraîchi | Vérifier tick 10ms
+...
+
+
+## 📌 Limitations connues & évolutions prévues
+
+### Limitations actuelles (v1.0)
+
+- 🔸 **Une seule ELOAD active à la fois**  
+  Par défaut, une seule baie peut être connectée à la charge électronique externe pour la décharge.  
+  👉 Ce comportement est **logiciel** et **configurable**.
+
+- 🔸 **Pas de stockage persistant des statistiques**  
+  Les cycles charge/décharge, fautes et durées ne sont pas encore sauvegardés en Flash interne.
+
+- 🔸 **Interface utilisateur minimale**  
+  Le système est volontairement headless (BLE / UART / USB CDC uniquement).
+
+---
+
+### Évolutions prévues (roadmap)
+
+- 🔧 **Décharge multi-baies configurable**  
+  Possibilité d’autoriser **N baies simultanées en décharge** (`ELOADS=<1..6>`), avec :
+  - arbitrage dynamique,
+  - respect du budget PSU,
+  - priorisation par SoC.
+
+- 💾 **Journalisation Flash (event log)**  
+  Stockage persistant :
+  - erreurs par baie,
+  - durées de charge/décharge,
+  - nombre de cycles.
+
+- 📊 **Interface PC / Web**  
+  - Outil desktop (USB CDC) ou web (BLE) pour :
+    - monitoring temps réel,
+    - export CSV,
+    - mise à jour firmware.
+
+- 🌡️ **Gestion thermique avancée**
+  - Ventilateur PWM proportionnel,
+  - réduction automatique du nombre de baies actives en cas de montée thermique.
+
+- 🔐 **Sécurité & production**
+  - CRC firmware,
+  - versioning hardware/firmware,
+  - numéro de série exposé via BLE/USB.
+
+---
+
+## 🧾 Conformité & usage prévu
+
+- ✔️ **Conformité IATA / UN 3480**  
+  Le mode **~30 % SoC** est spécifiquement conçu pour le transport aérien sécurisé.
+
+- ⚠️ **Usage interne / professionnel**  
+  Ce projet est destiné à un **environnement contrôlé** ( production, maintenance).  
+  
+
+---
+
+## 📄 Licence
+
+Ce projet est publié sous licence **MIT** :
+
+- Utilisation libre (personnelle / commerciale)
+
+
+Voir le fichier `LICENSE` pour le texte complet.
+
+---
+
+## 🤝 Contributions
+
+Les contributions sont bienvenues :
+
+- amélioration firmware (FSM, drivers),
+- validation thermique,
+- optimisation hardware,
+- outils de monitoring.
+
+Merci d’ouvrir une **issue** ou une **pull request** avec une description claire.
+
+---
+
+## ✍️ Auteur
+
+**Takiyeddin Gherras**  
+
+
+ 
+
+© 2026 EOS Positioning Systems 

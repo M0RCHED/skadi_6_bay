@@ -1,0 +1,2 @@
+../Core/Src/services/services_identity.c:20:13:hex_u32	24	static
+../Core/Src/services/services_identity.c:43:6:ChargerUid_ToString	24	static

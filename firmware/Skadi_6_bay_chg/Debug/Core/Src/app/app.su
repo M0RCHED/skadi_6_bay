@@ -1,0 +1,10 @@
+../Core/Src/app/app.c:11:16:temp_fault	24	static
+../Core/Src/app/app.c:12:16:temp_recover	24	static
+../Core/Src/app/app.c:14:13:bay_enter	16	static
+../Core/Src/app/app.c:20:13:bay_fault	16	static
+../Core/Src/app/app.c:27:16:i2c_read_one_bay	40	static
+../Core/Src/app/app.c:52:13:eload_select_set	40	static
+../Core/Src/app/app.c:76:18:decide_cmd	24	static
+../Core/Src/app/app.c:94:13:bay_step	24	static
+../Core/Src/app/app.c:184:6:App_Init	24	static
+../Core/Src/app/app.c:203:6:App_Tick	32	static

@@ -1,0 +1,2 @@
+../Core/Src/drivers/drivers_tca9548a.c:14:19:Mux_Select	2
+../Core/Src/drivers/drivers_tca9548a.c:23:19:Mux_DisableAll	1
