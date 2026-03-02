@@ -3825,7 +3825,7 @@
 	)
 	(text "USB\n"
 		(exclude_from_sim no)
-		(at 221.234 161.798 0)
+		(at 223.266 161.29 0)
 		(effects
 			(font
 				(size 3.27 3.27)

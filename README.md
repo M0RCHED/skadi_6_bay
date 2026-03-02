@@ -129,67 +129,15 @@ Le firmware implémente une FSM par baie avec **scan round-robin** (une baie à 
 
 #### États de la FSM
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     INIT (démarrage)                        │
-│  • Config GPIO, I²C, MUX, LEDs                              │
-│  • Reset tous les enable charge/décharge                    │
-└──────────────────────┬──────────────────────────────────────┘
-                       │
-                       ▼
-              ┌────────────────┐
-              │    ABSENT      │◄────────────┐
-              │ • Pack non     │             │
-              │   détecté      │             │
-              └────────┬───────┘             │
-                       │ DET=1               │ DET=0
-                       ▼                     │
-              ┌────────────────┐             │
-              │     CHECK      │─────────────┘
-              │ • Lecture I²C  │
-              │ • I²C timeout  │
-              └────────┬───────┘
-                       │ I²C OK
-                       ▼
-              ┌────────────────┐
-              │   INIT_BAT     │ 
-              │ • Gauge_EZ_Init│
-              │ • Init modèle  │
-              │   ModelGauge   │
-              └────────┬───────┘
-                       │
-         ┌─────────────┼─────────────┐
-         │             │             │
-    SoC<28%       28≤SoC≤30.5    SoC>30.5%
-         │             │             │
-         ▼             ▼             ▼
-   ┌─────────┐   ┌─────────┐   ┌──────────┐
-   │ CHARGE  │   │ STABLE  │   │DISCHARGE │
-   │ 12V ON  │   │ Repos   │   │ELOAD ON  │
-   │         │   │ ~30%    │   │          │
-   └────┬────┘   └────┬────┘   └────┬─────┘
-        │             │             │
-        │ SoC≥30.5    │ Drift       │ SoC≤30.5
-        └─────────────┼─────────────┘
-                      ▼
-                ┌──────────┐
-                │  STABLE  │
-                └──────────┘
-                      │
-                      │ Temp>45°C, I²C fail, timeout
-                      ▼
-                ┌──────────┐
-                │  FAULT   │
-                │ OFF all  │
-                └──────────┘
-```
+![Diagramme FSM](./Docs/diag_2.png)
+
 
 #### Description des états
 
 | État | Description | Transitions |
 |------|-------------|-------------|
 | **INIT** | Initialisation système, reset des GPIO | → ABSENT (pack absent)<br>→ CHECK (pack détecté) |
-| **ABSENT** | Pack non détecté (DET=0 ou I²C NACK) | → CHECK (insertion pack) |
+| **IDLE** | Pack non détecté (DET=0 ou I²C NACK) | → CHECK (insertion pack) |
 | **CHECK** | Lecture I²C initiale, vérification température | → INIT_BAT (I²C OK)<br>→ FAULT (I²C fail > 3×) |
 | **INIT_BAT** | **Initialisation ModelGauge m5 EZ**<br>• Appel `Gauge_EZ_Init()`<br>• Configuration fuel gauge | → CHARGE (SoC < 28%)<br>→ DISCHARGE (SoC > 30.5%)<br>→ STABLE (28% ≤ SoC ≤ 30.5%)<br>→ FAULT (erreur init) |
 | **CHARGE** | 12V activé, charge CC/CV par BQ24610 | → STABLE (SoC ≥ 30.5%)<br>→ FAULT (timeout 25min, T>45°C) |

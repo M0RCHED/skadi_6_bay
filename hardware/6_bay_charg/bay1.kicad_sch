@@ -1936,7 +1936,7 @@
 	)
 	(text "Pogo pins\n"
 		(exclude_from_sim no)
-		(at 219.71 86.36 0)
+		(at 220.472 74.676 0)
 		(effects
 			(font
 				(size 3.27 3.27)
@@ -2073,16 +2073,6 @@
 			(type default)
 		)
 		(uuid "021c36ae-c91c-4e96-879b-a1e5c2fcb132")
-	)
-	(wire
-		(pts
-			(xy 27.94 160.02) (xy 27.94 162.56)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "04d39de1-57c8-4d2f-b0ca-ef82fc35fea8")
 	)
 	(wire
 		(pts
@@ -2226,16 +2216,6 @@
 	)
 	(wire
 		(pts
-			(xy 34.29 50.8) (xy 34.29 59.69)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "28ac77a8-2927-4381-a0f0-7cbfdfce978d")
-	)
-	(wire
-		(pts
 			(xy 76.2 173.99) (xy 76.2 165.1)
 		)
 		(stroke
@@ -2356,7 +2336,7 @@
 	)
 	(wire
 		(pts
-			(xy 35.56 50.8) (xy 34.29 50.8)
+			(xy 35.56 50.8) (xy 31.75 50.8)
 		)
 		(stroke
 			(width 0)
@@ -2446,7 +2426,7 @@
 	)
 	(wire
 		(pts
-			(xy 36.83 160.02) (xy 27.94 160.02)
+			(xy 36.83 160.02) (xy 31.75 160.02)
 		)
 		(stroke
 			(width 0)
@@ -2826,7 +2806,7 @@
 	)
 	(global_label "BAY1_CHG_EN"
 		(shape input)
-		(at 34.29 59.69 270)
+		(at 31.75 50.8 180)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -2836,7 +2816,7 @@
 		)
 		(uuid "1e2c8881-0e46-499f-89db-c7556eaf9d57")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 34.29 75.6171 90)
+			(at 15.8229 50.8 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -3090,7 +3070,7 @@
 	)
 	(global_label "BAY1_DIS_EN"
 		(shape input)
-		(at 27.94 162.56 270)
+		(at 31.75 160.02 180)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -3100,7 +3080,7 @@
 		)
 		(uuid "fd4c1841-930e-4e34-8cb9-10461790b937")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 27.94 177.7009 90)
+			(at 16.6091 160.02 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6351,7 +6331,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "Conn_01x02"
+		(property "Value" "ELOAD"
 			(at 139.6999 116.84 0)
 			(effects
 				(font

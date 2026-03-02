@@ -1019,6 +1019,17 @@
 			(embedded_fonts no)
 		)
 	)
+	(text "MUX"
+		(exclude_from_sim no)
+		(at 147.32 148.59 0)
+		(effects
+			(font
+				(size 3.27 3.27)
+				(thickness 0.4088)
+			)
+		)
+		(uuid "ab2bb370-a551-4a21-96f8-a9c8a0e2af44")
+	)
 	(junction
 		(at 125.73 91.44)
 		(diameter 0)
