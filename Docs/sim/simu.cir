@@ -1,0 +1,120 @@
+* =========================================================
+* Skadi 6-Bay Smart Charger
+* Bay CHG/DIS interlock validation
+* LTspice 26.x - FINAL REVIEW VERSION (Realistic CC-limited current)
+* =========================================================
+
+.param VIN=12
+.param VBAT=8.0
+.param RBAT=4.0
+.param RLOAD=10
+.param VLOG=3.3
+
+* =========================================================
+* POWER SOURCES
+* =========================================================
+
+* Main 12V supply + line resistance (realistic)
+V_IN   VIN_RAW   0  {VIN}
+R_VIN  VIN_RAW   VIN_NODE  0.2
+
+* Battery model (effective CC limit equivalent)
+V_BAT  BAT_SRC   0  {VBAT}
+R_BAT  BAT_SRC   BAY_PWR   {RBAT}
+
+* Local bay decoupling (realistic)
+C_BAY     BAY_PWR 0  47u  Rser=0.05
+C_BAY_HF  BAY_PWR 0  100n Rser=0.02
+
+* External discharge load
+R_ELOAD  ELOAD_POS  0  {RLOAD}
+
+* =========================================================
+* CONTROL SIGNALS (Firmware simulation)
+* =========================================================
+
+* CHG: ON from 2ms to 8ms
+V_CHG_EN CHG_EN 0 PULSE(0 {VLOG} 2m 2u 2u 6m 12m)
+
+* DIS: ON from 9ms to 14ms (no overlap nominal)
+V_DIS_EN DIS_EN 0 PULSE(0 {VLOG} 9m 2u 2u 5m 12m)
+
+* =========================================================
+* CHARGE SWITCH (High-side P-MOS)
+* =========================================================
+
+* Current sense source
+VCHG_SENSE VIN_NODE VIN_CHG_SRC 0
+
+* P-MOS
+M_PCHG  BAY_PWR  G_CHG  VIN_CHG_SRC  VIN_CHG_SRC  AO4407A_P
+
+* Gate network
+R_PU_CHG   G_CHG      VIN_NODE     100k
+R_G_CHG    G_CHG      G_CHG_INT    100
+M_NCHG     G_CHG_INT  CHG_EN       0 0 DMG2302_N
+
+* =========================================================
+* DISCHARGE SWITCH (High-side P-MOS)
+* =========================================================
+
+VDIS_SENSE BAY_PWR DIS_SRC 0
+
+M_PDIS  ELOAD_POS  G_DIS  DIS_SRC  DIS_SRC  AO4407A_P
+
+R_PU_DIS   G_DIS      BAY_PWR     100k
+R_G_DIS    G_DIS      G_DIS_INT   100
+M_NDIS     G_DIS_INT  DIS_EN      0 0 DMG2302_N
+
+* =========================================================
+* HARDWARE INTERLOCK (Cross Diodes)
+* =========================================================
+
+D_INT1  G_CHG_INT  G_DIS_INT  D4148
+D_INT2  G_DIS_INT  G_CHG_INT  D4148
+
+.model D4148 D(Is=2n Rs=0.5 N=1.9 Cjo=2p M=0.3 Vj=0.75 Bv=100 Ibv=1u)
+
+* =========================================================
+* MOSFET MODELS (Generic but realistic)
+* =========================================================
+
+.model AO4407A_P PMOS (Level=1 Vto=-2.6 Kp=2.5 Rs=8m Rd=8m Lambda=0.01)
+.model DMG2302_N NMOS (Level=1 Vto=1.8  Kp=0.35 Rs=0.2 Rd=0.2 Lambda=0.02)
+
+* =========================================================
+* SIMULATION
+* =========================================================
+
+.options plotwinsize=0
+.tran 0 20m 0 20n
+
+* =========================================================
+* MEASUREMENTS
+* =========================================================
+
+* ---- Vgs safety check ----
+.meas tran VGS_CHG_MIN  min  V(G_CHG, VIN_CHG_SRC)
+.meas tran VGS_DIS_MIN  min  V(G_DIS, DIS_SRC)
+
+* ---- Current measurements ----
+.meas tran ICHG_MAX      max abs(I(VCHG_SENSE))
+.meas tran IDIS_MAX      max abs(I(VDIS_SENSE))
+
+* Steady current during charge (4ms)
+.meas tran ICHG_7MS FIND abs(I(VCHG_SENSE)) AT=7m
+
+* Turn-on peak window
+.meas tran ICHG_PEAK_ON  max abs(I(VCHG_SENSE)) FROM 2m TO 2.3m
+
+* ---- Firmware overlap detection ----
+BOV OV 0 V = (V(CHG_EN) > 1.6) * (V(DIS_EN) > 1.6)
+
+.meas tran TOV_RISE  when V(OV)=0.5 rise=1
+.meas tran TOV_FALL  when V(OV)=0.5 fall=1
+.meas tran TOV_WIDTH param (TOV_FALL - TOV_RISE)
+
+* ---- Supply peak current ----
+.meas tran I_VIN_MAX max abs(I(V_IN))
+
+.end
